@@ -1,0 +1,29 @@
+{
+  "name": "grasp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "G.R.A.S.P. professionalized frontend and control orchestration project.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
+    "test": "vitest run"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^10.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.0.0",
+    "vite": "^7.0.0",
+    "vitest": "^3.0.0"
+  }
+}
