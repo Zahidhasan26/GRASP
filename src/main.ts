@@ -101,7 +101,11 @@ safetyState.onStop(() => {
 
 safetyState.onStop(() => {
   clearStepCommandQueue();
+  setEmgTriggerEnabled(false);
   void sendCommandSafe("STOP");
+  window.setTimeout(() => {
+    void sendCommandSafe("EMG_STATUS");
+  }, 300);
 });
 
 const plusButton = document.getElementById("gripPlus");

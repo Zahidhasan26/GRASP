@@ -77,20 +77,23 @@ unsigned long holdMs = 400;
 static const unsigned long DEBOUNCE_MS = 35;
 static const uint8_t PRESSES_PER_LEVEL = 2;
 static const unsigned long INTER_PRESS_INTERVAL_MS = 1000;
+static const uint8_t STOP_RESET_LEVELS = 7;
 
 // ---------------- EMG trigger ----------------
 bool emgEnabled = false; // explicit opt-in from UI button.
 bool emgLatched = false; // true = engaged/holding state
-int emgEngageThreshold = 3000;   // engage when raw >= 3000
-int emgReleaseThreshold = 2000;  // release when raw <= 2000
+int emgEngageThreshold = 2300;   // engage when raw >= 2300
+int emgReleaseThreshold = 1000;  // release when raw <= 1000
 int emgRaw = 0;
 unsigned long lastEmgSampleMs = 0;
 unsigned long lastEmgEdgeMs = 0;
 static const unsigned long EMG_SAMPLE_MS = 10;
 static const unsigned long EMG_MIN_EDGE_GAP_MS = 220;
+static const unsigned long EMG_HOLD_STEP_INTERVAL_MS = 2000;
 uint8_t emgAboveCount = 0;
 uint8_t emgBelowCount = 0;
 static const uint8_t EMG_CONSECUTIVE_REQUIRED = 3;
+unsigned long lastEmgStepMs = 0;
 
 // ---------------- Motion state machine ----------------
 enum MotionState {
@@ -221,18 +224,27 @@ bool startPhysicalPress(char actionCode, int angle) {
 }
 
 void emergencyStop() {
+  // Immediate halt of current motion.
   motionState = IDLE;
   activeAction = 'I';
-  stepAction = 'I';
-  pressesRemainingInStep = 0;
+  stepAction = 'M';
+  stepAngle = clampInt(minusAngle, SAFE_MIN_ANGLE, SAFE_MAX_ANGLE);
+  pressesRemainingInStep = (uint8_t)(STOP_RESET_LEVELS * PRESSES_PER_LEVEL);
   targetAngle = neutralAngle;
+  emgLatched = false;
+  emgEnabled = false; // must be explicitly re-enabled by user after emergency stop
+  emgAboveCount = 0;
+  emgBelowCount = 0;
+  lastEmgStepMs = millis();
 
   attachServoIfNeeded();
   writeServoSafe(neutralAngle);
   delay(20); // short settle pulse before detach
   detachServoIfNeeded();
 
-  Serial.println("OK stopped");
+  Serial.print("OK stopped-reset levels=");
+  Serial.print(STOP_RESET_LEVELS);
+  Serial.println(" emg=off");
 }
 
 void updateMotion() {
@@ -322,6 +334,7 @@ void updateEmgTrigger() {
     if (startPress('P', plusAngle)) {
       emgLatched = true;
       lastEmgEdgeMs = now;
+      lastEmgStepMs = now;
       emgAboveCount = 0;
       Serial.print("EVT EMG_ENGAGE raw=");
       Serial.println(emgRaw);
@@ -333,9 +346,22 @@ void updateEmgTrigger() {
     if (startPress('M', minusAngle)) {
       emgLatched = false;
       lastEmgEdgeMs = now;
+      lastEmgStepMs = now;
       emgBelowCount = 0;
       Serial.print("EVT EMG_RELEASE raw=");
       Serial.println(emgRaw);
+    }
+    return;
+  }
+
+  // While user keeps flexing (still above engage), step up every 2 seconds.
+  if (emgLatched && emgAboveCount >= EMG_CONSECUTIVE_REQUIRED) {
+    if (now - lastEmgStepMs >= EMG_HOLD_STEP_INTERVAL_MS) {
+      if (startPress('P', plusAngle)) {
+        lastEmgStepMs = now;
+        Serial.print("EVT EMG_HOLD_STEP raw=");
+        Serial.println(emgRaw);
+      }
     }
   }
 }
