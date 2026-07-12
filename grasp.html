@@ -387,6 +387,39 @@
   }
   .grip-level .k{font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:#D3C8BF}
   .grip-level .v{font-size:38px;font-weight:700;line-height:1}
+  .emg-inline{
+    margin-top:18px;
+    width:min(620px,92vw);
+    border:1.5px solid #E5DFD9;
+    border-radius:14px;
+    padding:12px 14px;
+    background:rgba(255,255,255,.92);
+    box-shadow:0 6px 20px rgba(120,90,60,.06);
+  }
+  .emg-inline .head{
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+    font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#6B6764;margin-bottom:7px;
+  }
+  .emg-inline .meta{
+    display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:#6B6764;margin-bottom:8px;
+  }
+  .emg-inline .meta strong{color:#151312}
+  .emg-canvas{
+    width:100%;height:96px;display:block;border-radius:10px;
+    background:linear-gradient(180deg,#FCFCFB,#F4F3F1);
+    border:1px solid #EAE5DF;
+  }
+  .emg-actions{display:flex;justify-content:flex-end;margin-top:8px}
+  .emg-toggle{
+    border:0;border-radius:9px;padding:9px 12px;cursor:pointer;
+    font-family:var(--body);font-size:12px;font-weight:600;
+  }
+  .emg-toggle.off{
+    color:#0f5132;background:linear-gradient(135deg,#86efac,#4ade80);
+  }
+  .emg-toggle.on{
+    color:#fff;background:linear-gradient(135deg,#ef4444,#b91c1c);
+  }
 
   .state{margin-top:30px;text-align:center}
   .state .pill{
@@ -562,6 +595,23 @@
           <span class="v" id="gripLevel">0</span>
         </div>
         <button class="grip-btn minus" id="gripMinus" aria-label="Decrease level by one">-</button>
+      </div>
+
+      <div class="emg-inline" aria-label="Live EMG monitor">
+        <div class="head">
+          <span>EMG Live View</span>
+          <span id="emgPercent">0.0%</span>
+        </div>
+        <div class="meta">
+          <span>Connection: <strong id="emgConnState">disconnected</strong></span>
+          <span>Raw: <strong id="emgRawValue">-</strong></span>
+          <span>Thresholds: <strong id="emgThresholds">- / -</strong></span>
+          <span>Queue: <strong id="emgQueueValue">0</strong></span>
+        </div>
+        <canvas id="emgChart" class="emg-canvas" width="620" height="96"></canvas>
+        <div class="emg-actions">
+          <button id="emgTriggerToggle" class="emg-toggle off" type="button">Enable EMG Trigger</button>
+        </div>
       </div>
 
       <div class="state" id="state">

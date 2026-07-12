@@ -39,6 +39,7 @@
   Note:
     - Each PLUS/MINUS command performs a full level step:
       two physical presses separated by 1000ms.
+    - EMG triggering starts disabled until EMG ON is sent.
 
   Responses:
     OK <message>
@@ -78,10 +79,10 @@ static const uint8_t PRESSES_PER_LEVEL = 2;
 static const unsigned long INTER_PRESS_INTERVAL_MS = 1000;
 
 // ---------------- EMG trigger ----------------
-bool emgEnabled = true;
+bool emgEnabled = false; // explicit opt-in from UI button.
 bool emgLatched = false; // true = engaged/holding state
-int emgEngageThreshold = 1850;   // 12-bit ADC nominal threshold
-int emgReleaseThreshold = 1450;  // lower than engage (hysteresis)
+int emgEngageThreshold = 3000;   // engage when raw >= 3000
+int emgReleaseThreshold = 2000;  // release when raw <= 2000
 int emgRaw = 0;
 unsigned long lastEmgSampleMs = 0;
 unsigned long lastEmgEdgeMs = 0;

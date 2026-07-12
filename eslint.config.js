@@ -14,6 +14,8 @@ export default [
         document: "readonly",
         Event: "readonly",
         CustomEvent: "readonly",
+        SpeechSynthesisUtterance: "readonly",
+        fetch: "readonly",
         alert: "readonly",
       },
     },
@@ -24,6 +26,16 @@ export default [
       globals: {
         console: "readonly",
         process: "readonly",
+      },
+    },
+  },
+  {
+    files: ["server/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        process: "readonly",
+        console: "readonly",
+        fetch: "readonly",
       },
     },
   },

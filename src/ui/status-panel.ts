@@ -12,11 +12,16 @@ export type StatusPanel = {
   setConnectionState: (state: ConnectionState) => void;
   setQueueDepth: (depth: number) => void;
   setLastCommand: (command: string) => void;
+  setEmgTriggerEnabled: (enabled: boolean) => void;
   setEmg: (snapshot: EmgSnapshot) => void;
   appendLine: (line: string) => void;
 };
 
-export function mountStatusPanel(): StatusPanel {
+type StatusPanelOptions = {
+  onToggleEmgTrigger?: (nextEnabled: boolean) => void;
+};
+
+export function mountStatusPanel(options: StatusPanelOptions = {}): StatusPanel {
   injectStyles();
 
   const panel = document.createElement("aside");
@@ -44,6 +49,8 @@ export function mountStatusPanel(): StatusPanel {
       <div class="gsp-emg-legend">
         <span>0</span><span>2048</span><span>4095</span>
       </div>
+      <canvas id="gsp-emg-chart" width="336" height="86" aria-label="Live EMG chart"></canvas>
+      <button id="gsp-emg-toggle" type="button" class="gsp-emg-toggle off">Enable EMG Trigger</button>
     </div>
     <div class="gsp-log-title">Serial Log</div>
     <pre id="gsp-log"></pre>
@@ -60,11 +67,20 @@ export function mountStatusPanel(): StatusPanel {
   const emgFillEl = panel.querySelector<HTMLElement>("#gsp-emg-fill");
   const emgEngageEl = panel.querySelector<HTMLElement>("#gsp-emg-engage");
   const emgReleaseEl = panel.querySelector<HTMLElement>("#gsp-emg-release");
+  const emgChartEl = panel.querySelector<HTMLCanvasElement>("#gsp-emg-chart");
+  const emgToggleEl = panel.querySelector<HTMLButtonElement>("#gsp-emg-toggle");
   const logEl = panel.querySelector<HTMLElement>("#gsp-log");
   const lines: string[] = [];
+  const emgHistory: number[] = [];
   let lastRaw = 0;
   let lastEngage = 0;
   let lastRelease = 0;
+  let emgTriggerEnabled = false;
+
+  emgToggleEl?.addEventListener("click", () => {
+    const next = !emgTriggerEnabled;
+    options.onToggleEmgTrigger?.(next);
+  });
 
   return {
     setConnectionState: (state) => {
@@ -79,6 +95,15 @@ export function mountStatusPanel(): StatusPanel {
     setLastCommand: (command) => {
       if (!cmdEl) return;
       cmdEl.textContent = command;
+    },
+    setEmgTriggerEnabled: (enabled) => {
+      emgTriggerEnabled = enabled;
+      if (!emgToggleEl) {
+        return;
+      }
+      emgToggleEl.classList.toggle("on", enabled);
+      emgToggleEl.classList.toggle("off", !enabled);
+      emgToggleEl.textContent = enabled ? "Disable EMG Trigger" : "Enable EMG Trigger";
     },
     setEmg: (snapshot) => {
       if (emgRawEl && snapshot.raw !== undefined) {
@@ -106,6 +131,9 @@ export function mountStatusPanel(): StatusPanel {
         const latched = snapshot.latched === "1" ? "latched" : snapshot.latched === "0" ? "released" : "?";
         emgModeEl.textContent = `${enabled}, ${latched}`;
       }
+      if (snapshot.enabled !== undefined) {
+        emgTriggerEnabled = snapshot.enabled === "1";
+      }
       const rawPct = asPercent(lastRaw);
       if (emgFillEl) {
         emgFillEl.style.width = `${rawPct}%`;
@@ -119,6 +147,17 @@ export function mountStatusPanel(): StatusPanel {
       if (emgReleaseEl) {
         emgReleaseEl.style.left = `${asPercent(lastRelease)}%`;
       }
+      if (emgToggleEl) {
+        emgToggleEl.classList.toggle("on", emgTriggerEnabled);
+        emgToggleEl.classList.toggle("off", !emgTriggerEnabled);
+        emgToggleEl.textContent = emgTriggerEnabled ? "Disable EMG Trigger" : "Enable EMG Trigger";
+      }
+
+      emgHistory.push(lastRaw);
+      if (emgHistory.length > 120) {
+        emgHistory.shift();
+      }
+      drawEmgChart(emgChartEl, emgHistory, lastEngage, lastRelease);
     },
     appendLine: (line) => {
       if (!logEl) return;
@@ -222,6 +261,36 @@ function injectStyles(): void {
       color: #b8b8b8;
       display: flex;
       justify-content: space-between;
+      margin-bottom: 6px;
+    }
+    #gsp-emg-chart {
+      width: 100%;
+      height: 86px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.09);
+      display: block;
+      margin-bottom: 6px;
+    }
+    .gsp-emg-toggle {
+      width: 100%;
+      border: 0;
+      border-radius: 8px;
+      padding: 8px 10px;
+      cursor: pointer;
+      font-size: 11px;
+      font-family: inherit;
+      font-weight: 700;
+      letter-spacing: .03em;
+      margin-bottom: 2px;
+    }
+    .gsp-emg-toggle.on {
+      color: #fefefe;
+      background: linear-gradient(135deg, #b91c1c, #7f1d1d);
+    }
+    .gsp-emg-toggle.off {
+      color: #111827;
+      background: linear-gradient(135deg, #34d399, #10b981);
     }
     #gsp-log {
       margin: 0;
@@ -253,4 +322,67 @@ function parseNumber(value: string | undefined): number | null {
 function asPercent(value: number): number {
   const clamped = Math.max(0, Math.min(4095, value));
   return (clamped / 4095) * 100;
+}
+
+function drawEmgChart(
+  canvas: HTMLCanvasElement | null,
+  values: number[],
+  engage: number,
+  release: number,
+): void {
+  if (!canvas) {
+    return;
+  }
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return;
+  }
+
+  const width = canvas.width;
+  const height = canvas.height;
+
+  ctx.clearRect(0, 0, width, height);
+
+  // Baseline grid.
+  ctx.strokeStyle = "rgba(255,255,255,0.12)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, height * 0.5);
+  ctx.lineTo(width, height * 0.5);
+  ctx.stroke();
+
+  // Threshold lines.
+  const engageY = height - (Math.max(0, Math.min(4095, engage)) / 4095) * height;
+  const releaseY = height - (Math.max(0, Math.min(4095, release)) / 4095) * height;
+  ctx.strokeStyle = "rgba(245, 158, 11, 0.85)";
+  ctx.beginPath();
+  ctx.moveTo(0, engageY);
+  ctx.lineTo(width, engageY);
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(56, 189, 248, 0.85)";
+  ctx.beginPath();
+  ctx.moveTo(0, releaseY);
+  ctx.lineTo(width, releaseY);
+  ctx.stroke();
+
+  if (values.length < 2) {
+    return;
+  }
+
+  ctx.strokeStyle = "rgba(34, 197, 94, 0.95)";
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  const stepX = width / Math.max(1, values.length - 1);
+  for (let i = 0; i < values.length; i += 1) {
+    const raw = Math.max(0, Math.min(4095, values[i] ?? 0));
+    const x = i * stepX;
+    const y = height - (raw / 4095) * height;
+    if (i === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  }
+  ctx.stroke();
 }

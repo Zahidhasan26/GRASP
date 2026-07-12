@@ -5,7 +5,9 @@
   "type": "module",
   "description": "G.R.A.S.P. professionalized frontend and control orchestration project.",
   "scripts": {
-    "dev": "vite --host",
+    "dev": "concurrently \"npm:dev:web\" \"npm:dev:api\"",
+    "dev:web": "vite --host",
+    "dev:api": "node server/gemini-api.mjs",
     "build": "vite build",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit",
@@ -14,11 +16,15 @@
     "format:write": "prettier --write .",
     "test": "vitest run"
   },
-  "dependencies": {},
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1"
+  },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
+    "concurrently": "^10.0.3",
     "eslint": "^9.0.0",
     "eslint-config-prettier": "^10.0.0",
     "prettier": "^3.0.0",
