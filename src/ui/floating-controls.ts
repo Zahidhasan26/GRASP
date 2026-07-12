@@ -1,7 +1,9 @@
 type FloatingControls = {
   stopButton: HTMLButtonElement;
   voiceButton: HTMLButtonElement;
+  connectButton: HTMLButtonElement;
   setListening: (listening: boolean) => void;
+  setConnectionState: (state: "disconnected" | "connecting" | "connected") => void;
 };
 
 export function mountFloatingControls(): FloatingControls {
@@ -19,14 +21,33 @@ export function mountFloatingControls(): FloatingControls {
   voiceButton.textContent = "Voice";
   voiceButton.setAttribute("aria-label", "Voice command");
 
-  document.body.append(stopButton, voiceButton);
+  const connectButton = document.createElement("button");
+  connectButton.id = "grasp-connect-btn";
+  connectButton.type = "button";
+  connectButton.textContent = "Connect";
+  connectButton.setAttribute("aria-label", "Connect to ESP32");
+
+  document.body.append(stopButton, voiceButton, connectButton);
 
   return {
     stopButton,
     voiceButton,
+    connectButton,
     setListening: (listening) => {
       voiceButton.classList.toggle("listening", listening);
       voiceButton.textContent = listening ? "Listening…" : "Voice";
+    },
+    setConnectionState: (state) => {
+      connectButton.dataset.state = state;
+      if (state === "connected") {
+        connectButton.textContent = "Connected";
+        return;
+      }
+      if (state === "connecting") {
+        connectButton.textContent = "Connecting…";
+        return;
+      }
+      connectButton.textContent = "Connect";
     },
   };
 }
@@ -40,7 +61,8 @@ function injectStyles(): void {
   style.id = "grasp-floating-controls-style";
   style.textContent = `
     #grasp-stop-btn,
-    #grasp-voice-btn {
+    #grasp-voice-btn,
+    #grasp-connect-btn {
       position: fixed;
       right: 24px;
       z-index: 999;
@@ -70,6 +92,21 @@ function injectStyles(): void {
     #grasp-voice-btn.listening {
       color: white;
       background: linear-gradient(135deg, #f97316, #c2410c);
+    }
+
+    #grasp-connect-btn {
+      bottom: 148px;
+      color: #ffffff;
+      background: linear-gradient(135deg, #0f766e, #0b4f4a);
+      font-weight: 600;
+    }
+
+    #grasp-connect-btn[data-state="connecting"] {
+      background: linear-gradient(135deg, #64748b, #334155);
+    }
+
+    #grasp-connect-btn[data-state="connected"] {
+      background: linear-gradient(135deg, #16a34a, #166534);
     }
   `;
 

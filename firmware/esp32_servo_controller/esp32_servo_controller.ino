@@ -7,6 +7,7 @@
   Purpose:
     - Single seesaw servo: press + or - on command.
     - Button A = + press, Button B = - press.
+    - One logical level step = 2 physical presses with 1s interval.
     - Keep servo detached while idle (less jitter/heat).
     - Use non-blocking state machine (no long delay() locks).
     - Provide structured serial protocol for direct PC/web integration.
@@ -15,7 +16,7 @@
     Servo red    -> 5V external rail (NOT ESP32 USB 5V for high load)
     Servo brown  -> GND (shared with ESP32 GND)
     Servo orange -> GPIO 27
-    MyoWare ENV  -> GPIO 34 (ADC input)
+    MyoWare ENV  -> GPIO 32 (ADC input, change if your board differs)
     MyoWare GND  -> GND
     MyoWare VCC  -> 3.3V
 
@@ -35,6 +36,10 @@
     EMG_STATUS
     PING
 
+  Note:
+    - Each PLUS/MINUS command performs a full level step:
+      two physical presses separated by 1000ms.
+
   Responses:
     OK <message>
     ERR <reason>
@@ -49,7 +54,9 @@
 static const int SERVO_PIN = 27;
 static const int BTN_A_PIN = 0;
 static const int BTN_B_PIN = 35;
-static const int EMG_ENV_PIN = 34;
+// Use an exposed ADC-capable pin on your board.
+// Good options: 32, 33, 36, 39 (input-only on some boards).
+static const int EMG_ENV_PIN = 32;
 
 // ---------------- Servo config ----------------
 static const int SERVO_MIN_US = 500;
@@ -67,6 +74,8 @@ unsigned long holdMs = 400;
 
 // ---------------- Button debounce ----------------
 static const unsigned long DEBOUNCE_MS = 35;
+static const uint8_t PRESSES_PER_LEVEL = 2;
+static const unsigned long INTER_PRESS_INTERVAL_MS = 1000;
 
 // ---------------- EMG trigger ----------------
 bool emgEnabled = true;
@@ -87,7 +96,8 @@ enum MotionState {
   IDLE = 0,
   MOVING_TO_TARGET,
   HOLDING_TARGET,
-  RETURNING_NEUTRAL
+  RETURNING_NEUTRAL,
+  WAITING_NEXT_PRESS
 };
 
 Servo servo;
@@ -96,6 +106,9 @@ char activeAction = 'I'; // I=idle, P=plus, M=minus
 int targetAngle = 0;
 unsigned long phaseStartMs = 0;
 bool servoAttached = false;
+uint8_t pressesRemainingInStep = 0;
+char stepAction = 'I';
+int stepAngle = 0;
 
 // ---------------- Serial command buffer ----------------
 static const size_t CMD_BUF_SIZE = 80;
@@ -153,6 +166,10 @@ void printStatus() {
   Serial.print(moveMs);
   Serial.print(" holdMs=");
   Serial.print(holdMs);
+  Serial.print(" pressesPerLevel=");
+  Serial.print(PRESSES_PER_LEVEL);
+  Serial.print(" interPressIntervalMs=");
+  Serial.print(INTER_PRESS_INTERVAL_MS);
   Serial.print(" attached=");
   Serial.println(servoAttached ? "1" : "0");
 
@@ -175,11 +192,20 @@ const char *actionLabel(char actionCode) {
 }
 
 bool startPress(char actionCode, int angle) {
-  if (motionState != IDLE) {
+  if (motionState != IDLE || pressesRemainingInStep > 0) {
     Serial.println("ERR busy");
     return false;
   }
 
+  stepAction = actionCode;
+  stepAngle = clampInt(angle, SAFE_MIN_ANGLE, SAFE_MAX_ANGLE);
+  pressesRemainingInStep = PRESSES_PER_LEVEL;
+  Serial.print("EVT STEP_START ");
+  Serial.println(actionLabel(stepAction));
+  return true;
+}
+
+bool startPhysicalPress(char actionCode, int angle) {
   activeAction = actionCode;
   targetAngle = clampInt(angle, SAFE_MIN_ANGLE, SAFE_MAX_ANGLE);
 
@@ -196,6 +222,8 @@ bool startPress(char actionCode, int angle) {
 void emergencyStop() {
   motionState = IDLE;
   activeAction = 'I';
+  stepAction = 'I';
+  pressesRemainingInStep = 0;
   targetAngle = neutralAngle;
 
   attachServoIfNeeded();
@@ -211,6 +239,13 @@ void updateMotion() {
 
   switch (motionState) {
     case IDLE:
+      if (pressesRemainingInStep > 0) {
+        startPhysicalPress(stepAction, stepAngle);
+        pressesRemainingInStep--;
+        break;
+      }
+      stepAction = 'I';
+      stepAngle = 0;
       // Keep detached while idle.
       detachServoIfNeeded();
       break;
@@ -236,6 +271,19 @@ void updateMotion() {
         Serial.print("EVT PRESS_DONE ");
         Serial.println(actionLabel(activeAction));
         activeAction = 'I';
+        if (pressesRemainingInStep > 0) {
+          motionState = WAITING_NEXT_PRESS;
+          phaseStartMs = now;
+        } else {
+          Serial.print("EVT STEP_DONE ");
+          Serial.println(actionLabel(stepAction));
+          motionState = IDLE;
+        }
+      }
+      break;
+
+    case WAITING_NEXT_PRESS:
+      if (now - phaseStartMs >= INTER_PRESS_INTERVAL_MS) {
         motionState = IDLE;
       }
       break;
@@ -266,7 +314,7 @@ void updateEmgTrigger() {
   }
 
   // Only edge-trigger plus/minus when servo is idle and cooldown elapsed.
-  if (motionState != IDLE) return;
+  if (motionState != IDLE || pressesRemainingInStep > 0) return;
   if (now - lastEmgEdgeMs < EMG_MIN_EDGE_GAP_MS) return;
 
   if (!emgLatched && emgAboveCount >= EMG_CONSECUTIVE_REQUIRED) {
@@ -429,6 +477,8 @@ void setup() {
   pinMode(BTN_A_PIN, INPUT_PULLUP);
   pinMode(BTN_B_PIN, INPUT); // GPIO35 input-only; TTGO board pull-up in hardware
   pinMode(EMG_ENV_PIN, INPUT);
+  analogReadResolution(12);
+  analogSetPinAttenuation(EMG_ENV_PIN, ADC_11db);
 
   attachServoIfNeeded();
   writeServoSafe(neutralAngle);

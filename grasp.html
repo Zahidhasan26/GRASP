@@ -352,32 +352,41 @@
 
   /* ---------- 5. grip aid ---------- */
   .aid{display:flex;flex-direction:column;align-items:center}
-  .switch{
-    margin-top:38px;position:relative;width:min(340px,84vw);height:118px;border-radius:999px;cursor:pointer;
+  .grip-stepper{
+    margin-top:38px;
+    width:min(360px,88vw);
+    display:grid;
+    grid-template-columns:1fr auto 1fr;
+    align-items:center;
+    gap:12px;
+  }
+  .grip-btn{
+    border:0;
+    border-radius:16px;
+    height:94px;
+    cursor:pointer;
+    font-size:48px;
+    font-weight:700;
+    color:#fff;
+    box-shadow:0 14px 28px rgba(0,0,0,.28), inset 0 2px 8px rgba(255,255,255,.15);
+  }
+  .grip-btn.plus{
+    background:linear-gradient(180deg,#FFB067,var(--orange) 55%,#D45E0C);
+  }
+  .grip-btn.minus{
+    background:linear-gradient(180deg,#8E8B88,#5D5A57 45%,#3C3A38);
+  }
+  .grip-btn:active{transform:translateY(1px)}
+  .grip-level{
+    min-width:92px;height:94px;border-radius:16px;
+    display:grid;place-items:center;
     background:linear-gradient(180deg,#3A3735,#232120);
-    border:3px solid var(--orange);padding:0;
-    box-shadow:0 22px 44px rgba(120,50,10,.28), inset 0 4px 14px rgba(0,0,0,.55);
-    display:block;
+    border:2px solid var(--orange);
+    color:#fff;
+    box-shadow:inset 0 4px 14px rgba(0,0,0,.45);
   }
-  .knob{
-    position:absolute;top:6px;bottom:6px;width:calc(50% - 4px);left:4px;border-radius:999px;
-    background:linear-gradient(180deg,#FFB067,var(--orange) 45%,#D45E0C);
-    box-shadow:0 10px 22px rgba(0,0,0,.4), inset 0 2px 3px rgba(255,255,255,.5), inset 0 -6px 12px rgba(160,60,5,.5);
-    transition:left .32s cubic-bezier(.34,1.4,.5,1), background .3s;
-  }
-  .switch[aria-checked="true"] .knob{left:calc(50% + 0px)}
-  .switch[aria-checked="false"] .knob{background:linear-gradient(180deg,#8E8B88,#5D5A57 45%,#3C3A38)}
-  .switch .lbl{
-    position:absolute;top:0;bottom:0;width:50%;display:grid;place-items:center;
-    font-weight:700;font-size:30px;letter-spacing:.04em;transition:color .3s;
-  }
-  .lbl.off{left:0;color:var(--orange)}
-  .lbl.on{right:0;color:#fff}
-  .switch[aria-checked="true"] .lbl.off{color:#7C766F}
-  .switch[aria-checked="true"] .lbl.on{color:#fff}
-  .switch[aria-checked="false"] .lbl.on{color:#8D8A86}
-  .switch[aria-checked="false"] .lbl.off{color:#fff}
-  .switch:focus-visible{outline:3px solid #0B0B0C;outline-offset:5px}
+  .grip-level .k{font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:#D3C8BF}
+  .grip-level .v{font-size:38px;font-weight:700;line-height:1}
 
   .state{margin-top:30px;text-align:center}
   .state .pill{
@@ -544,17 +553,20 @@
   <section class="panel light" id="gripaid" data-name="Grip Aid">
     <div class="aid" id="aid">
       <h2 class="panel-title">Grip <span class="accent">Aid</span></h2>
-      <p class="lede">Flip the switch to hold or release an object.</p>
+      <p class="lede">Press + to increase one level. Press - to decrease one level.</p>
 
-      <button class="switch" id="switch" role="switch" aria-checked="false" aria-label="Grip: on holds the object, off releases it">
-        <span class="lbl off">OFF</span>
-        <span class="lbl on">ON</span>
-        <span class="knob" aria-hidden="true"></span>
-      </button>
+      <div class="grip-stepper" aria-label="Grip stimulation level control">
+        <button class="grip-btn plus" id="gripPlus" aria-label="Increase level by one">+</button>
+        <div class="grip-level" aria-live="polite">
+          <span class="k">Level</span>
+          <span class="v" id="gripLevel">0</span>
+        </div>
+        <button class="grip-btn minus" id="gripMinus" aria-label="Decrease level by one">-</button>
+      </div>
 
       <div class="state" id="state">
-        <span class="pill"><span class="pip" aria-hidden="true"></span><span id="stateLabel">Stimulation off — hand released</span></span>
-        <p id="stateDetail"><strong>OFF</strong> releases the object. <strong>ON</strong> holds it.</p>
+        <span class="pill"><span class="pip" aria-hidden="true"></span><span id="stateLabel">Level 0 — stimulation idle</span></span>
+        <p id="stateDetail"><strong>+</strong> raises by one step. <strong>-</strong> lowers by one step.</p>
       </div>
 
     </div>
@@ -683,26 +695,37 @@
   render();
 
   /* ---------- 5. grip aid ---------- */
-  const sw=document.getElementById('switch');
+  const plus=document.getElementById('gripPlus');
+  const minus=document.getElementById('gripMinus');
+  const gripLevelEl=document.getElementById('gripLevel');
   const state=document.getElementById('state');
   const label=document.getElementById('stateLabel');
   const detail=document.getElementById('stateDetail');
+  let gripLevel = 0;
 
-  function toggle(){
-    const on = sw.getAttribute('aria-checked')!=='true';
-    sw.setAttribute('aria-checked', String(on));
-    state.classList.toggle('switch-live', on);
-    label.textContent = on
-      ? `Stimulating ${target} at level ${Math.round((levels.sensory + levels.motor)/2)} — holding`
-      : 'Stimulation off — hand released';
-    detail.innerHTML = on
-      ? '<strong>ON</strong> holds the object. Flip to <strong>OFF</strong> to let go.'
-      : '<strong>OFF</strong> releases the object. <strong>ON</strong> holds it.';
+  function renderGrip(){
+    state.classList.toggle('switch-live', gripLevel > 0);
+    gripLevelEl.textContent = String(gripLevel);
+    label.textContent = gripLevel > 0
+      ? `Stimulating ${target} at level ${gripLevel}`
+      : 'Level 0 — stimulation idle';
+    detail.innerHTML = `Each <strong>+</strong> or <strong>-</strong> changes level by one. Recommended hold level: <strong>${Math.round((levels.sensory + levels.motor)/2)}</strong>.`;
+    plus.disabled = gripLevel >= MAX;
+    minus.disabled = gripLevel <= 0;
   }
-  sw.addEventListener('click', toggle);
-  sw.addEventListener('keydown', e=>{
-    if(e.key===' '||e.key==='Enter'){e.preventDefault();toggle();}
+  plus.addEventListener('click', ()=>{
+    if(gripLevel < MAX){
+      gripLevel += 1;
+      renderGrip();
+    }
   });
+  minus.addEventListener('click', ()=>{
+    if(gripLevel > 0){
+      gripLevel -= 1;
+      renderGrip();
+    }
+  });
+  renderGrip();
 
   /* ---------- keyboard paging ---------- */
   document.addEventListener('keydown', e=>{

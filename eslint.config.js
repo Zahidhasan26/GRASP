@@ -10,6 +10,7 @@ export default [
       ...js.configs.recommended.languageOptions,
       globals: {
         window: "readonly",
+        navigator: "readonly",
         document: "readonly",
         Event: "readonly",
         CustomEvent: "readonly",
